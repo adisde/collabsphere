@@ -1,21 +1,24 @@
 import pg from "pg";
-const { Client } = pg;
+import dotenv from "dotenv";
 
-export default async function runDB() {
-  try {
-    const client = new Client({
-      user: process.env.PG_USER,
-      password: process.env.PG_PASS,
-      host: process.env.PG_HOST,
-      port: process.env.PG_PORT,
-      database: process.env.PG_DB,
-      ssl: false,
-    });   
+dotenv.config({
+  quiet: true,
+});
 
-    await client.connect();
-    console.log("DB is connected");
-    
-} catch (err) {
-    console.log("DB :", err);
-  }
-}
+const { Pool } = pg;
+
+const pool = new Pool({
+  user: process.env.PG_USER,
+  password: process.env.PG_PASS,
+  host: process.env.PG_HOST,
+  port: process.env.PG_PORT,
+  database: process.env.PG_DB,
+  ssl: false,
+});
+
+pool
+  .connect()
+  .then(() => console.log("DB is connected!"))
+  .catch((err) => console.log("DB : ", err));
+
+export default pool;
