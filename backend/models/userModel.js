@@ -4,7 +4,7 @@ export default class User {
   // Creating User
 
   static async createUser({ username, email, password, isverified = false }) {
-    const query = `INSERT INTO users (username, email, password, isverified) VALUES ($1, $2, $3, $4) RETURNING id, username, email, isverified;`;
+    const query = `INSERT INTO users (username, email, password, isverified) VALUES ($1, $2, $3, $4) RETURNING *;`;
     const { rows } = await pool.query(query, [
       username,
       email,
@@ -17,7 +17,7 @@ export default class User {
   // Updating Password
 
   static async updatePassword({ email, password }) {
-    const query = `UPDATE users SET password = $1 WHERE email = $2 RETURNING id, email;`;
+    const query = `UPDATE users SET password = $2 WHERE email = $1 RETURNING *;`;
     const { rows } = await pool.query(query, [email, password]);
     return rows[0];
   }
@@ -41,7 +41,7 @@ export default class User {
   // Update Verification
 
   static async updateVerification({ email, isverified = true }) {
-    const query = `UPDATE users SET isverified = $2 WHERE email = $1 RETURNING email`;
+    const query = `UPDATE users SET isverified = $2 WHERE email = $1 RETURNING *`;
     const { rows } = await pool.query(query, [email, isverified]);
     return rows[0];
   }
@@ -51,6 +51,14 @@ export default class User {
   static async removeUser({ email }) {
     const query = `DELETE FROM users WHERE email = $1 RETURNING *`;
     const { rows } = await pool.query(query, [email]);
+    return rows[0];
+  }
+
+  // Update user Details
+
+  static async updateUser({ username, email }) {
+    const query = `UPDATE users SET username = $1 WHERE email = $2 RETURNING *;`;
+    const { rows } = await pool.query(query, [username, email]);
     return rows[0];
   }
 }
