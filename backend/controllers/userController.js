@@ -2,6 +2,7 @@ import User from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { authenticateToken, generateEmailToken } from "../utils/customToken.js";
+import Log from "../models/logModel.js";
 
 // Creating new user
 
@@ -54,6 +55,11 @@ export const createUser = async (req, res) => {
       });
     }
 
+    await Log.createUserLog({
+      user_id: createUserAccount.id,
+      log_message: "Account has been created.",
+    });
+
     return res.status(200).json({
       message: "Verification email has been sent to ur email.",
     });
@@ -90,7 +96,6 @@ export const verifyEmail = async (req, res) => {
       email: isTokenValid.email,
       isverified: true,
     });
-    console.log(updateUser);
 
     if (!updateUser) {
       return res.status(400).json({
@@ -98,6 +103,10 @@ export const verifyEmail = async (req, res) => {
       });
     }
 
+    await Log.createUserLog({
+      user_id: updateUser.id,
+      log_message: "Account has been verified.",
+    });
     return res.status(200).json({
       message: "Email has been verified, now u can login.",
     });
@@ -169,7 +178,12 @@ export const loginUser = async (req, res) => {
       sameSite: "strict",
       maxAge: 60 * 60 * 1000 * 4,
     });
-
+    console.log(searchEmail.id);
+    
+    await Log.createUserLog({
+      user_id: searchEmail.id,
+      log_message: "Login successful.",
+    });
     return res.status(200).json({
       message: "Login successful.",
       user: {
@@ -179,6 +193,10 @@ export const loginUser = async (req, res) => {
       },
     });
   } catch (err) {
+    await Log.createUserLog({
+      user_id: searchEmail.id,
+      log_message: "Login Failed.",
+    });
     console.error("Login error : ", err.message);
     return res.status(500).json({
       message: "Somthing went wrong.",
@@ -269,6 +287,11 @@ export const changePassword = async (req, res) => {
       });
     }
 
+    await Log.createUserLog({
+      user_id: updatePassword.id,
+      log_message: "Password has been changed.",
+    });
+
     return res.status(200).json({
       message: "Password has been updated, u can login now.",
     });
@@ -322,6 +345,10 @@ export const updateUserDetails = async (req, res) => {
       });
     }
 
+    await Log.createUserLog({
+      user_id: updateDetails.id,
+      log_message: "User details has been updated.",
+    });
     return res.status(200).json({
       message: "Your details has been updated, refresh the page.",
     });
@@ -338,12 +365,14 @@ export const updateUserDetails = async (req, res) => {
 
 export const logoutUser = async (req, res) => {
   try {
+    const { id } = req.query;
     res.clearCookie("ctoken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "prod",
       sameSite: "strict",
     });
 
+    await Log.createUserLog({ user_id: id, log_message: "Logout successful." });
     return res.status(200).json({
       message: "Logged out successful.",
     });
