@@ -1,22 +1,23 @@
 import Member from "../models/memberModel.js";
 import Project from "../models/projectModel.js";
 
-export const projectAuthorize = async (user_id, project_id) => {
+export const projectAuthorize = async (req, res, next) => {
   try {
+    const user_id = req.body.user_id;
+    const project_id = req.body.project_id;
+
     if (!user_id || !project_id) {
-      return {
+      return res.status(400).json({
         message: "User ID and Project ID are required.",
-        isTrue: false,
-      };
+      });
     }
 
     const isExistProject = await Project.searchProjectId({ project_id });
 
     if (!isExistProject) {
-      return {
+      return res.status(404).json({
         message: "Project not found.",
-        isTrue: false,
-      };
+      });
     }
 
     const isExistMemberForProject = await Member.searchMember({
@@ -25,27 +26,21 @@ export const projectAuthorize = async (user_id, project_id) => {
     });
 
     if (!isExistMemberForProject) {
-      return {
+      return res.status(403).json({
         message: "Access denied. User is not a member of this project.",
-        isTrue: false,
-      };
+      });
     }
 
     if (!isExistMemberForProject.role) {
-      return {
+      return res.status(400).json({
         message: "Invalid member role.",
-        isTrue: false,
-      };
+      });
     }
 
-    return {
-      message: "Access granted.",
-      isTrue: true,
-    };
+    next();
   } catch (err) {
-    return {
+    return res.status(400).json({
       message: `Authorization failed: ${err.message}`,
-      isTrue: false,
-    };
+    });
   }
 };
