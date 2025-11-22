@@ -2,7 +2,7 @@ import pool from "../config/db.js";
 
 export default class User {
   static async createUser({ username, email, password, isverified = false }) {
-    const query = `INSERT INTO users (username, email, password, isverified) VALUES ($1, $2, $3, $4) RETURNING id, username, email;`;
+    const query = `INSERT INTO users (username, email, password, isverified) VALUES ($1, LOWER($2), $3, $4) RETURNING id, username, email;`;
     const { rows } = await pool.query(query, [
       username,
       email,
@@ -19,7 +19,7 @@ export default class User {
   }
 
   static async getUserForLogin({ email }) {
-    const query = `SELECT id, username, email, password, isverified FROM users WHERE email = $1 LIMIT 1;`;
+    const query = `SELECT id, username, email, password, isverified, loginattempts FROM users WHERE email = $1 LIMIT 1;`;
     const { rows } = await pool.query(query, [email]);
     return rows[0];
   }
@@ -51,6 +51,12 @@ export default class User {
   static async updateUser({ username, user_id }) {
     const query = `UPDATE users SET username = $1, updated_at = NOW() WHERE id = $2 RETURNING id, username, email;`;
     const { rows } = await pool.query(query, [username, user_id]);
+    return rows[0];
+  }
+
+  static async findById({ user_id }) {
+    const query = `SELECT id, email, isverified, username FROM users WHERE id = $1;`;
+    const { rows } = await pool.query(query, [user_id]);
     return rows[0];
   }
 }
