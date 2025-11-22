@@ -1,386 +1,222 @@
 import User from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { authenticateToken, generateEmailToken } from "../utils/customToken.js";
 import Log from "../models/logModel.js";
+import { inputValidator } from "../helpers/inputsValidator.js";
+import { passwordValidator } from "../helpers/passwordValidator.js";
+import { sendEmail } from "../services/emailService.js";
+import { generateToken } from "../services/tokenService.js";
 
-// Creating new user
-
-export const createUser = async (req, res) => {
-  const { username, email, password } = req.body;
-
-  if (!username || !email || !password) {
-    return res.status(400).json({
-      message: "Invalid or missing required information.",
-    });
-  }
-
-  if (password.length < 8) {
-    return res.status(400).json({
-      message: "Password length must be greater than 8 characters.",
-    });
-  }
-
-  const isExistEmail = await User.searchEmail({ email: email.trim() });
-  const isExistUsername = await User.searchUsername({
-    username: username.trim(),
-  });
-
-  if (isExistEmail) {
-    return res.status(400).json({
-      message: "Account already exists with this email.",
-    });
-  }
-
-  if (isExistUsername) {
-    return res.status(400).json({
-      message: "Username has been used, try another one.",
-    });
-  }
-
+export const registerUser = async (req, res) => {
   try {
+    const { username, email, password } = req.body;
+
+    const result = inputValidator(["username", "email", "password"], req.body);
+    if (!result.ok) return res.status(400).json({ message: result.message });
+
+    const resultPassword = passwordValidator(password);
+    if (!resultPassword.ok) return res.status(400).json({ message: resultPassword.message });
+
+    const isExistEmail = await User.searchEmail({ email: email.trim() });
+    if (!isExistEmail) return res.status(400).json({ ok: false, message: "Email already exists" });
+
+    const isExistUsername = await User.searchUsername({ username: username.trim() });
+    if (!isExistUsername) return res.status(400).json({ ok: false, message: "Username already taken." });
+
     const hashPassword = await bcrypt.hash(password.trim(), 10);
-    const createUserAccount = await User.createUser({
-      email: email.trim(),
-      username: username.trim(),
-      password: hashPassword,
-    });
 
-    const token = await generateEmailToken(email.trim());
-    console.log(token);
+    const createUserAccount = await User.createUser({ username: username.trim(), email: email.trim(), password: hashPassword });
 
-    if (!createUserAccount) {
-      return res.status(400).json({
-        message: "Failed to create account, try again.",
-      });
-    }
+    if (!createUserAccount) return res.status(400).json({ ok: false, message: "Failed to create user account." });
 
-    await Log.createUserLog({
-      user_id: createUserAccount.id,
-      log_message: "Account has been created.",
-    });
+    const token = generateToken(createUserAccount.id, "email");
+
+    await sendEmail(email, "email", token);
+
+    await Log.createUserLog({ user_id: createUserAccount.id, log_message: "Account created." });
 
     return res.status(200).json({
-      message: "Verification email has been sent to ur email.",
+      ok: true,
+      message: "Verification email sent."
     });
+
   } catch (err) {
-    console.error("Account creation Error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Creating user error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
+
   }
 };
 
-// Verifying the email token and updating user verification status
-
-export const verifyEmail = async (req, res) => {
-  const { token } = req.query;
-
-  if (!token) {
-    return res.status(400).json({
-      message: "Invalid or missing token.",
-    });
-  }
-
-  const isTokenValid = await authenticateToken(token);
-
-  if (!isTokenValid.isSuccess) {
-    return res.status(400).json({
-      message: isTokenValid.message,
-    });
-  }
-
+export const confirmUserEmail = async (req, res) => {
   try {
-    const updateUser = await User.updateVerification({
-      email: isTokenValid.email,
-      isverified: true,
-    });
+    const { user_id, from } = req;
 
-    if (!updateUser) {
-      return res.status(400).json({
-        message: "Email verification failed.",
-      });
-    }
+    if (from !== "email") return res.status(400).json({ ok: false, message: "Invalid user." })
 
-    await Log.createUserLog({
-      user_id: updateUser.id,
-      log_message: "Account has been verified.",
-    });
-    return res.status(200).json({
-      message: "Email has been verified, now u can login.",
-    });
+    const isExistUser = await User.findById({ user_id });
+    if (!isExistUser) return res.status(400).json({ ok: false, message: "Invalid user." });
+
+    if (isExistUser.isverified) return res.status(200).json({ ok: true, message: "Email already verified." });
+
+    const updateStatus = await User.updateVerification({ user_id });
+    if (!updateStatus) return res.status(400).json({ ok: false, message: "Failed to verify email." });
+
+    await Log.createUserLog({ user_id, log_message: "Account verified." });
+
+    return res.status(200).json({ ok: true, message: "Verified successfully, You can login." });
   } catch (err) {
-    console.error("Email verfication error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Email verification error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
 
-// User login
-
-export const loginUser = async (req, res) => {
+export const loginUserSession = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const result = inputValidator(["email", "password"], req.body);
 
-    if (!email || !password) {
-      return res.status(400).json({
-        message: "Invalid or missing email and password.",
-      });
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
+
+    const resultPassword = passwordValidator(password.trim());
+    if (!resultPassword.ok) return res.status(400).json({ ok: false, message: resultPassword.message });
+
+    const isExistEmail = await User.searchEmail({ email: email.trim() });
+    if (!isExistEmail) return res.status(401).json({ ok: false, message: "Email not exist" });
+
+    if (!isExistEmail.isverified) {
+      const token = generateToken(isExistEmail.id, "email");
+      await sendEmail(email, "email", token);
+
+      return res.status(200).json({ ok: true, message: "Verification email sent." });
     }
 
-    if (password.trim().length < 8) {
-      return res.status(400).json({
-        message: "Password length must be greater than 8 characters.",
-      });
-    }
+    const userLogin = await User.getUserForLogin({ email: email.trim() });
 
-    const searchEmail = await User.searchEmail({ email: email.trim() });
+    if (!userLogin) return res.status(401).json({ ok: false, message: "Something went wrong." });
 
-    if (!searchEmail) {
-      return res.status(400).json({
-        message: "Invalid email.",
-      });
-    }
+    const isPasswordMatch = await bcrypt.compare(password, userLogin.password);
 
-    const isPasswordMatch = await bcrypt.compare(
-      password.trim(),
-      searchEmail.password
+    if (!isPasswordMatch) return res.status(401).json({ ok: false, message: "Invalid email or password." });
+
+    const token = jwt.sign(
+      { id: userLogin.id, email: userLogin.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "8h" },
     );
 
-    if (!isPasswordMatch) {
-      return res.status(400).json({
-        message: "Invalid email and password.",
-      });
-    }
-
-    if (searchEmail.isverified == false) {
-      await generateEmailToken(email.trim());
-      return res.status(400).json({
-        message: "Verification email has been sent.",
-      });
-    }
-
-    const userPayload = {
-      id: searchEmail.id,
-      email: searchEmail.email,
-    };
-
-    const token = jwt.sign(userPayload, process.env.JWT_SECRET, {
-      expiresIn: "4h",
-    });
-
-    res.cookie("ctoken", token, {
+    res.cookie("collabtoken", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV == "prod",
+      secure: process.env.NODE_ENV === "prod",
       sameSite: "strict",
-      maxAge: 60 * 60 * 1000 * 4,
+      maxAge: 8 * 60 * 60 * 1000
     });
-    console.log(searchEmail.id);
-    
-    await Log.createUserLog({
-      user_id: searchEmail.id,
-      log_message: "Login successful.",
-    });
-    return res.status(200).json({
-      message: "Login successful.",
-      user: {
-        id: searchEmail.id,
-        email: searchEmail.email,
-        username: searchEmail.username,
-      },
-    });
+
+    await Log.createUserLog({ user_id, log_message: "Login successful." });
+
+    return res.status(200).json({ ok: true, message: "Login successful", user: { id: userLogin.id, email: userLogin.email } });
   } catch (err) {
-    await Log.createUserLog({
-      user_id: searchEmail.id,
-      log_message: "Login Failed.",
-    });
-    console.error("Login error : ", err.message);
-    return res.status(500).json({
-      message: "Somthing went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Login error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong" });
   }
 };
 
-// Forgot Password
-
-export const forgotPassword = async (req, res) => {
+export const sendPasswordResetEmail = async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({
-        message: "Invalid email.",
-      });
-    }
+
+    const result = inputValidator(["email"], req.body);
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
     const isExistEmail = await User.searchEmail({ email: email.trim() });
 
     if (isExistEmail) {
-      const token = await generateEmailToken(email.trim());
-      console.log(token);
+      const passwordToken = await generateToken(isExistEmail.id, "password");
+      await sendEmail(email.trim(), "password", passwordToken);
 
-      return res.status(200).json({
-        message:
-          "If email is registered with us, u will receive an verification email.",
-      });
+      return res.status(200).json({ ok: true, message: "If email is registered with us, u will receive an verification email." });
     }
 
-    return res.status(200).json({
-      message:
-        "If email is registered with us, u will receive an verification email.",
-    });
+    return res.status(200).json({ ok: true, message: "If email is registered with us, u will receive an verification email." });
   } catch (err) {
-    console.error("Forgot password error : ", err.message);
-    return res.status(500).json({
-      message: "Somthing went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Forgot password error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
 
-// Change Password
-
-export const changePassword = async (req, res) => {
+export const resetUserPassword = async (req, res) => {
   try {
     const { password } = req.body;
-    const { token } = req.query;
+    const { user_id, from } = req;
 
-    if (!token) {
-      return res.status(400).json({
-        message: "Invalid or missing token.",
-      });
-    }
+    const resultPassword = passwordValidator(password.trim());
+    if (!resultPassword.ok) return res.status(400).json({ ok: false, message: resultPassword.message });
 
-    const isTokenValid = await authenticateToken(token);
+    if (!user_id || !from) return res.status(401).json({ ok: false, message: "Invalid user" });
 
-    if (!isTokenValid.isSuccess) {
-      return res.status(400).json({
-        message: isTokenValid.message,
-      });
-    }
+    if (from !== "password") return res.status(401).json({ ok: false, message: "Invalid user." });
 
-    if (!password) {
-      return res.status(400).json({
-        message: "Missing password.",
-      });
-    }
+    const searchUser = await User.findById({ user_id });
+    if (!searchUser) return res.status(404).json({ ok: false, message: "User not found." });
 
-    if (password.trim().length < 8) {
-      return res.status(400).json({
-        message: "Password length must be greater than 8 characters.",
-      });
-    }
+    const hashPassword = await bcrypt.hash(password, 10);
+    const updateUserPassword = await User.updatePassword({ user_id, password: hashPassword });
 
-    const hashPassword = await bcrypt.hash(password.trim(), 10);
+    if (!updateUserPassword) return res.status(400).json({ ok: false, message: "Failed to change password." });
 
-    const updatePassword = await User.updatePassword({
-      email: isTokenValid.email,
-      password: hashPassword,
-    });
+    await Log.createUserLog({ user_id, log_message: "Password changed." });
 
-    if (!updatePassword) {
-      return res.status(400).json({
-        message: "Failed to update password.",
-      });
-    }
-
-    await Log.createUserLog({
-      user_id: updatePassword.id,
-      log_message: "Password has been changed.",
-    });
-
-    return res.status(200).json({
-      message: "Password has been updated, u can login now.",
-    });
+    return res.status(200).json({ ok: true, message: "Password changed, You can login." })
   } catch (err) {
-    console.error("Change password error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Change password error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
 
-// Update user details
-
-export const updateUserDetails = async (req, res) => {
+export const updateUsername = async (req, res) => {
   try {
     const { email, username } = req.body;
 
-    if (!email || !username) {
-      return res.status(400).json({
-        message: "Invalid or missing username and email.",
-      });
-    }
+    const result = inputValidator(["email", "username"], req.body);
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
     const isExistEmail = await User.searchEmail({ email: email.trim() });
+    if (!isExistEmail) return res.status(404).json({ ok: false, message: "Email does not exist." });
 
-    if (!isExistEmail) {
-      return res.status(400).json({
-        message: "Email does not exist.",
-      });
-    }
+    const isExistUsername = await User.searchUsername({ username: username.trim() });
+    if (!isExistUsername) return res.status(400).json({ ok: false, message: "Username is taken" });
 
-    const isExistUsername = await User.searchUsername({
-      username: username.trim(),
-    });
+    if (isExistEmail.username == isExistUsername.username) return res.status(200).json({ ok: true, message: "Your account have this username." });
 
-    if (isExistUsername && isExistUsername.email !== email.trim()) {
-      return res.status(400).json({
-        message: "Username has been used, try another one.",
-      });
-    }
+    const updateDetails = await User.updateUser({ username, user_id: isExistEmail.id });
+    if (!updateDetails) return res.status(400).json({ ok: false, message: "Failed to update username." });
 
-    const updateDetails = await User.updateUser({
-      email: email.trim(),
-      username: username.trim(),
-    });
+    await Log.createUserLog({ user_id: isExistEmail.id, log_message: "Updated username." });
 
-    if (!updateDetails) {
-      return res.status(400).json({
-        message: "Failed to update ur details.",
-      });
-    }
+    return res.status(200).json({ ok: true, message: "Username updated." })
 
-    await Log.createUserLog({
-      user_id: updateDetails.id,
-      log_message: "User details has been updated.",
-    });
-    return res.status(200).json({
-      message: "Your details has been updated, refresh the page.",
-    });
   } catch (err) {
-    console.error("Update details error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Update username error : ", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong" });
   }
 };
 
-// User logout
-
-export const logoutUser = async (req, res) => {
+export const logoutUserSession = async (req, res) => {
   try {
     const { id } = req.query;
-    res.clearCookie("ctoken", {
+
+    if (!id) return res.status(400).json({ ok: false, message: "Invalid user." });
+
+    res.clearCookie("collabtoken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "prod",
       sameSite: "strict",
     });
 
     await Log.createUserLog({ user_id: id, log_message: "Logout successful." });
-    return res.status(200).json({
-      message: "Logged out successful.",
-    });
+
+    return res.status(200).json({ ok: true, message: "Logout successful." });
   } catch (err) {
-    console.error("Update details error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Logout error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
