@@ -1,184 +1,138 @@
+import { inputValidator } from "../helpers/inputsValidator.js";
+import Chat from "../models/chatModel.js";
+import ChatMsg from "../models/chatMsgModel.js";
 import Log from "../models/logModel.js";
+import Member from "../models/memberModel.js";
+import Notes from "../models/notesModel.js";
 import Project from "../models/projectModel.js";
-
-// Creating project
+import Task from "../models/taskModel.js";
 
 export const createNewProject = async (req, res) => {
   try {
     const { owner_id, title, description } = req.body;
 
-    if (!owner_id || !title || !description) {
-      return res.status(400).json({
-        message: "Invalid or missing information.",
-      });
-    }
+    const result = inputValidator(["owner_id", "title", "description"], req.body);
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
-    if (title.length <= 3) {
-      return res.status(400).json({
-        message: "Project title length must be greater than 3 characters.",
-      });
-    }
+    if (title.length <= 3) return res.status(400).json({ ok: false, message: "Project title must be longer than 3 characters." });
 
-    const newProject = await Project.createProject({
-      title: title,
-      description: description,
-      owner_id: owner_id,
-    });
+    const newProject = await Project.createProject({ title, description, owner_id });
+    if (!newProject) return res.status(400).json({ ok: false, message: "Failed to create project." });
 
-    if (!newProject) {
-      return res.status(400).json({
-        message: "Failed to create new project.",
-      });
-    }
+    const newChatForProject = await Chat.createChat({ project_id: newProject.id, last_message: null });
+    if (!newChatForProject) return res.status(400).json({ ok: false, message: "Failed to create chat room for project." });
 
-    await Log.createProjectLog({
-      owner_id: owner_id,
-      project_id: newProject.id,
-      log_message: "Project has been created.",
-    });
+    const createCurrentMember = await Member.createMember({ project_id: newProject.id, user_id: owner_id, role: "admin" });
+    if (!createCurrentMember) return res.status(400).json({ ok: false, message: "Failed to create member for this project." });
 
-    return res.status(200).json({
-      message: "New project has been created.",
-    });
+    await Log.createProjectLog({ user_id: owner_id, project_id: newProject.id, log_message: "Project created." });
+
+    return res.status(201).json({ ok: true, message: "Project created successfully.", chat_id: newChatForProject.id, project_id: newProject.id });
+
   } catch (err) {
-    console.error("Creating project error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Create project error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
 
-// Updating project
-
-export const updateExistProject = async (req, res) => {
+export const updateExistingProject = async (req, res) => {
   try {
-    const { title, description, owner_id } = req.body;
-    const { id } = req.query;
+    const { title, description } = req.body;
+    const id = req.id;
+    const user_id = req.user_id;
 
-    if (!id) {
-      return res.status(400).json({
-        message: "Invalid or missing project id.",
-      });
-    }
+    const result = inputValidator(["title", "description"], req.body);
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
-    if (!title || !description || !owner_id) {
-      return res.status(400).json({
-        message: "Invalid or missing project details.",
-      });
-    }
+    if (title.length <= 3) return res.status(400).json({ ok: false, message: "Project title must be longer than 3 characters." });
 
-    const isExistProject = await Project.searchProject({ user_id: owner_id });
+    const updateProject = await Project.updateProject({ title, description, id });
+    if (!updateProject) return res.status(400).json({ ok: false, message: "Failed to update project details." });
 
-    if (!isExistProject) {
-      return res.status(400).json({
-        message:
-          "Projects does not exist for u, create new one to get started.",
-      });
-    }
+    await Log.createProjectLog({ user_id, project_id: id, log_message: "Project updated successfully." });
 
-    const updatePr = await Project.updateProject({
-      title: title,
-      description: description,
-      owner_id: owner_id,
-      id: id
-    });
-
-    if (!updatePr) {
-      return res.status(400).json({
-        message: "Failed to update project.",
-      });
-    }
-
-    await Log.createProjectLog({
-      user_id: owner_id,
-      project_id: isExistProject.id,
-      log_message: "Project details has been updated.",
-    });
-
-    return res.status(200).json({
-      message: "Project details has been updated.",
-    });
+    return res.status(200).json({ ok: true, message: "Project updated successfully." });
   } catch (err) {
-    console.error("Updating project error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Update project error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
 
-// Deleting project
-
-export const deleteExistProject = async (req, res) => {
+export const removeExistingProject = async (req, res) => {
   try {
-    const { id, user_id } = req.query;
+    const id = req.id;
 
-    if (!id || !user_id) {
-      return res.status(400).json({
-        message: "Invalid or missing ids.",
-      });
+    const result = inputValidator(["id"], { id });
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
+
+    const getChatForProject = await Chat.getChatForProject({ project_id: id });
+    if (!getChatForProject) return res.status(404).json({ ok: false, message: "Chat doesn't exist for this project." });
+
+    try {
+      await Promise.all([
+        Chat.deleteChatForProject({ id: getChatForProject.id }),
+        Member.removeAllMembersForProject({ project_id: id }),
+        Task.removeAllTasksForProject({ project_id: id }),
+        Notes.removeAllNotesForProject({ project_id: id }),
+        ChatMsg.removeAllMessageForProject({ chat_id: getChatForProject.id }),
+      ]);
+    } catch (err) {
+      return res.status(500).json({ ok: false, message: "Cleanup process failed." });
     }
 
-    const isExistProject = await Project.searchProject({ user_id: user_id });
+    const removeProject = await Project.removeProject({ id });
+    if (!removeProject) return res.status(400).json({ ok: false, message: "Failed to delete this project." });
 
-    if (!isExistProject) {
-      return res.status(400).json({
-        message: "Project does not exist for u, create new one to get started.",
-      });
-    }
-
-    const remProject = await Project.removeProject({ id: id });
-
-    if (!remProject) {
-      return res.status(400).json({
-        message: "Failed to delete project.",
-      });
-    }
-    
-    return res.status(200).json({
-      message: "Project has been deleted.",
-    });
+    return res.status(200).json({ ok: true, message: "Project deleted successfully." });
   } catch (err) {
-    console.error("Deleting project error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Delete project error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
 
-// Get project for user
-
-export const getProject = async (req, res) => {
+export const getAllProjectsForUser = async (req, res) => {
   try {
     const { user_id } = req.query;
 
-    if (!user_id) {
-      return res.status(400).json({
-        message: "Invalid or missing user id.",
-      });
-    }
+    const result = inputValidator(["user_id"], req.query);
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
-    const isExistProjectForUser = await Project.searchProject({
-      user_id: user_id,
-    });
+    const isExistProject = await Project.searchAllProjectsForUser({ user_id });
+    if (isExistProject.length === 0) return res.status(200).json({ ok: true, message: "No projects yet.", projects: isExistProject || [] });
 
-    if (!isExistProjectForUser) {
-      return res.status(400).json({
-        message: "Project does not exist for u, create new one to get started.",
-      });
-    }
+    return res.status(200).json({ ok: true, message: `Found ${isExistProject.length} projects.`, projects: isExistProject });
+  } catch (err) {
+    console.error("Get all projects error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
+  }
+};
+
+export const getSingleProjectForUser = async (req, res) => {
+  try {
+    const id = req.id;
+
+    const result = inputValidator(["id"], { id });
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
+
+    const [project, members, tasks, notes, logs] = await Promise.all([
+      Project.searchProjectById({ project_id: id }),
+      Member.searchMembers({ project_id: id }),
+      Task.getTasks({ project_id: id }),
+      Notes.getNotes({ project_id: id }),
+      Log.getProjectLogs({ project_id: id })
+    ])
 
     return res.status(200).json({
-      message: "Search successful.",
-      res: isExistProjectForUser,
+      ok: true,
+      project,
+      members,
+      tasks,
+      notes,
+      logs,
+      message: "Successful.",
     });
   } catch (err) {
-    console.error("Searching project error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Get single project error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
