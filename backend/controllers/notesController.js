@@ -1,291 +1,95 @@
+import { inputValidator } from "../helpers/inputsValidator.js";
 import Log from "../models/logModel.js";
-import Member from "../models/memberModel.js";
 import Notes from "../models/notesModel.js";
-import Project from "../models/projectModel.js";
-
-// Create project note
 
 export const createProjectNote = async (req, res) => {
   try {
-    const { user_id, project_id, title, content } = req.body;
+    const { title, content } = req.body;
+    const id = req.id;
+    const user_id = req.user_id;
 
-    if (!user_id || !project_id) {
-      return res.status(400).json({
-        message: "Invalid or missing ids.",
-      });
-    }
+    const result = inputValidator(["title", "content"], req.body);
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
-    if (!title || !content) {
-      return res.status(400).json({
-        message: "Missing note information.",
-      });
-    }
+    if (title.length <= 3) return res.status(400).json({ ok: false, message: "Note title must be longer than 3 characters." });
 
-    const isExistProject = await Project.searchProjectId({ project_id });
+    const createNote = await Notes.createNote({ project_id: id, user_id, title, content });
+    if (!createNote) return res.status(400).json({ ok: false, message: "Unable to create note." });
 
-    if (!isExistProject) {
-      return res.status(400).json({
-        message: "Project does not exist.",
-      });
-    }
+    await Log.createProjectLog({ user_id, project_id: id, log_message: `${user_id} created note(${createNote.id}) for the project.` });
 
-    const isExistMemberInProject = await Member.searchMember({
-      user_id,
-      project_id,
-    });
-
-    if (!isExistMemberInProject) {
-      return res.status(400).json({
-        message: "U're not a part of this project.",
-      });
-    }
-
-    const createNote = await Notes.createNote({
-      project_id,
-      user_id,
-      title,
-      content,
-    });
-
-    if (!createNote) {
-      return res.status(400).json({
-        message: "Failed to create note.",
-      });
-    }
-
-    await Log.createProjectLog({
-      user_id,
-      project_id,
-      log_message: `${user_id} created a note ${createNote.id} in project ${project_id}.`,
-    });
-    return res.status(200).json({
-      message: "Note has been created.",
-    });
+    return res.status(201).json({ ok: true, message: "Note created." });
   } catch (err) {
-    console.error("Creating note error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Create note error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
 
-// Updating existing project note
-
-export const updateProjectNote = async (req, res) => {
+export const updateExistingProjectNote = async (req, res) => {
   try {
     const { id } = req.query;
-    const { user_id, project_id, title, content } = req.body;
+    const { title, content } = req.body;
+    const project_id = req.id;
+    const user_id = req.user_id;
 
-    if (!id) {
-      return res.status(400).json({
-        message: "Invalid or missing note id.",
-      });
-    }
+    const result = inputValidator(["title", "content"], req.body);
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
-    if (!user_id || !project_id) {
-      return res.status(400).json({
-        message: "Invalid or missing ids.",
-      });
-    }
-
-    if (!title || !content) {
-      return res.status(400).json({
-        message: "Missing note information.",
-      });
-    }
-
-    const isExistProject = await Project.searchProjectId({ project_id });
-
-    if (!isExistProject) {
-      return res.status(400).json({
-        message: "Project does not exist.",
-      });
-    }
-
-    const isExistMemberInProject = await Member.searchMember({
-      user_id,
-      project_id,
-    });
-
-    if (!isExistMemberInProject) {
-      return res.status(400).json({
-        message: "U're not a part of this project.",
-      });
-    }
+    if (!id || id.trim().length === "") return res.status(400).json({ ok: false, message: "Note Id is required." });
+    if (title.trim().length <= 3) return res.status(400).json({ ok: false, message: "Note title must be longer than 3 characters." });
 
     const isExistNoteForProject = await Notes.getNote({ id });
+    if (!isExistNoteForProject) return res.status(404).json({ ok: false, message: "Note not found." });
 
-    if (!isExistNoteForProject) {
-      return res.status(400).json({
-        message: "Current note does not exist for this project.",
-      });
-    }
+    if (user_id !== isExistNoteForProject.user_id) return res.status(401).json({ ok: false, message: "Can't update someone's note." });
+    if (project_id !== isExistNoteForProject.project_id) return res.status(400).json({ ok: false, message: "Unknown project." });
 
-    if (user_id !== isExistNoteForProject.user_id) {
-      return res.status(400).json({
-        message: "U can't update someone else note.",
-      });
-    }
+    const updateNote = await Notes.updateNote({ title, content, id });
+    if (!updateNote) return res.status(400).json({ ok: false, message: "Unable to update note." });
 
-    if (project_id !== isExistNoteForProject.project_id) {
-      return res.status(400).json({
-        message: "Invalid project id.",
-      });
-    }
+    return res.status(200).json({ ok: true, message: "Note updated." });
 
-    const updateNote = await Notes.updateNote({
-      title,
-      content,
-      id,
-    });
-
-    if (!updateNote) {
-      return res.status(400).json({
-        message: "Failed to update this note.",
-      });
-    }
-
-    await Log.createProjectLog({
-      user_id,
-      project_id,
-      log_message: `${user_id} updated a note ${updateNote.id} in project ${project_id}.`,
-    });
-
-    return res.status(200).json({
-      message: "Note has been updated.",
-    });
   } catch (err) {
-    console.error("Updating note error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Update note error : ", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
 
-// Get notes for project
-
-export const getProjectNotes = async (req, res) => {
+export const getExistingProjectNote = async (req, res) => {
   try {
-    const { project_id } = req.query;
+    const id = req.id;
+    const searchNotes = await Notes.getNotes({ project_id: id });
 
-    if (!project_id) {
-      return res.status(400).json({
-        message: "Invalid or missing project id.",
-      });
-    }
+    if (searchNotes.length === 0) return res.status(200).json({ ok: true, message: "No notes found.", notes: searchNotes || [] });
 
-    const isExistProject = await Project.searchProjectId({ project_id });
-
-    if (!isExistProject) {
-      return res.status(400).json({
-        message: "Project does not exist.",
-      });
-    }
-
-    const searchNotes = await Notes.getNotes({ project_id });
-
-    if (searchNotes.length === 0) {
-      return res.status(200).json({
-        message: "No found notes for this project.",
-        res: [],
-      });
-    }
-
-    return res.status(200).json({
-      message: "Search successful.",
-      res: searchNotes,
-    });
+    return res.status(200).json({ ok: true, message: `${searchNotes.length} Notes retrieved.`, notes: searchNotes });
   } catch (err) {
-    console.error("Getting Notes error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Get Notes error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
 
-// Deleting project note
-
-export const deleteProjectNote = async (req, res) => {
+export const deleteExistingProjectNote = async (req, res) => {
   try {
     const { id } = req.query;
-    const { user_id, project_id } = req.body;
+    const user_id = req.user_id;
+    const project_id = req.id;
 
-    if (!id) {
-      return res.status(400).json({
-        message: "Invalid or missing note id.",
-      });
-    }
+    const result = inputValidator(["id"], req.query);
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
-    if (!user_id || !project_id) {
-      return res.status(400).json({
-        message: "Invalid or missing ids.",
-      });
-    }
+    const getNote = await Notes.getNote({ id });
+    if (!getNote) return res.status(404).json({ ok: false, message: "Note not found." });
 
-    const isExistProject = await Project.searchProjectId({ project_id });
+    if (user_id !== getNote.user_id) return res.status(401).json({ ok: false, message: "Can't delete someone's note." });
+    if (project_id !== getNote.project_id) return res.status(400).json({ ok: false, message: "Unknown project." });
 
-    if (!isExistProject) {
-      return res.status(400).json({
-        message: "Project does not exist.",
-      });
-    }
+    const deleteNote = await Notes.removeNote({ id });
+    if (!deleteNote) return res.status(400).json({ ok: false, message: "Unable to delete note." });
 
-    const isExistMemberInProject = await Member.searchMember({
-      user_id,
-      project_id,
-    });
-
-    if (!isExistMemberInProject) {
-      return res.status(400).json({
-        message: "U're not a part of this project.",
-      });
-    }
-
-    const isExistNoteForProject = await Notes.getNote({ id });
-
-    if (!isExistNoteForProject) {
-      return res.status(400).json({
-        message: "This note does note exist for this project.",
-      });
-    }
-
-    if (isExistNoteForProject.user_id !== user_id) {
-      return res.status(400).json({
-        message: "U can't delete someone else note.",
-      });
-    }
-
-    if (project_id !== isExistNoteForProject.project_id) {
-      return res.status(400).json({
-        message: "Invalid project id.",
-      });
-    }
-
-    const removeNote = await Notes.removeNote({ id });
-
-    if (!removeNote) {
-      return res.status(400).json({
-        message: "Failed to delete note.",
-      });
-    }
-
-    await Log.createProjectLog({
-      user_id,
-      project_id,
-      log_message: `${user_id} deleted note ${id} in project ${project_id}.`,
-    });
-
-    return res.status(200).json({
-      message: "Note has been deleted.",
-    });
+    return res.status(200).json({ ok: true, message: "Note deleted." });
   } catch (err) {
-    console.error("Deleting note error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Delete note error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." })
   }
 };
