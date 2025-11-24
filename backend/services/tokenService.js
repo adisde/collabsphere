@@ -13,7 +13,7 @@ export const generateToken = async (user_id, from) => {
     return token;
 }
 
-export const verfiyToken = async (token) => {
+export const verifyToken = async (token) => {
     const record = userTokens.get(token);
 
     if (!record) return { ok: false, message: "Invalid or expired token." };
