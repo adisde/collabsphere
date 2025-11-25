@@ -1,46 +1,30 @@
+import { inputValidator } from "../helpers/inputsValidator.js";
 import Member from "../models/memberModel.js";
 import Project from "../models/projectModel.js";
 
 export const projectAuthorize = async (req, res, next) => {
   try {
-    const user_id = req.body.user_id;
-    const project_id = req.body.project_id;
+    const project_id = req.params.project_id;
+    const user_id = req.user_id;
 
-    if (!user_id || !project_id) {
-      return res.status(400).json({
-        message: "User ID and Project ID are required.",
-      });
-    }
+    const result = inputValidator(["project_id"], { project_id });
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
-    const isExistProject = await Project.searchProjectId({ project_id });
+    if (!user_id || user_id.trim() === "") return res.status(401).json({ ok: false, message: "Unauthorized." });
 
-    if (!isExistProject) {
-      return res.status(404).json({
-        message: "Project not found.",
-      });
-    }
+    const isExistProject = await Project.searchProjectById({ project_id });
+    if (!isExistProject) return res.status(404).json({ ok: false, message: "Project not found." });
 
-    const isExistMemberForProject = await Member.searchMember({
-      user_id,
-      project_id,
-    });
+    const isExistMemberForProject = await Member.searchMember({ user_id, project_id });
+    if (!isExistMemberForProject) return res.status(401).json({ ok: false, message: "Access denied, You're not a member of this project." });
 
-    if (!isExistMemberForProject) {
-      return res.status(403).json({
-        message: "Access denied. User is not a member of this project.",
-      });
-    }
+    if (!isExistMemberForProject.role || isExistMemberForProject.role === "") return res.status(403).json({ ok: false, message: "Invalid role." });
 
-    if (!isExistMemberForProject.role) {
-      return res.status(400).json({
-        message: "Invalid member role.",
-      });
-    }
-
+    req.id = project_id;
+    req.user_id = user_id;
     next();
   } catch (err) {
-    return res.status(400).json({
-      message: `Authorization failed: ${err.message}`,
-    });
+    console.error("Project user validation error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
