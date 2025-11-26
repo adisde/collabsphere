@@ -1,178 +1,69 @@
-import ChatMembers from "../models/chatMembers.js";
+import { inputValidator } from "../helpers/inputsValidator.js";
 import Chat from "../models/chatModel.js";
 import ChatMsg from "../models/chatMsgModel.js";
-import Project from "../models/projectModel.js";
+import Member from "../models/memberModel.js";
 
-// Creating chat message
-
-export const createChatMsg = async (req, res) => {
+export const createChatMsgForProject = async (req, res) => {
   try {
-    const { chat_id, sender_id, message, sent_at, project_id } = req.body;
+    const { chat_id, message } = req.body;
+    const id = req.id;
+    const user_id = req.user_id;
 
-    if (!chat_id || !sender_id) {
-      return res.status(400).json({
-        message: "Invalid or missing ids.",
-      });
-    }
-
-    if (!message) {
-      return res.status(400).json({
-        message: "Message can't be empty.",
-      });
-    }
+    const result = inputValidator(["chat_id", "message"], req.body);
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
     const isExistChat = await Chat.getChat({ chat_id });
+    if (!isExistChat) return res.status(400).json({ ok: false, message: "Chat doesn't exist." });
 
-    if (!isExistChat) {
-      return res.status(400).json({
-        message: "Chat does not exist for this project.",
-      });
-    }
+    const isExistMemberForChat = await Member.searchMember({ user_id, project_id: id });
+    if (!isExistMemberForChat) return res.status(401).json({ ok: false, message: "Can't send message in this chat." });
 
-    const isExistUserInChat = await ChatMembers.getMember({
-      user_id: sender_id,
-      project_id,
-    });
+    const bothMatchesProject = id === isExistChat.project_id;
+    if (!bothMatchesProject) return res.status(401).json({ ok: false, message: "Unauthorized." });
 
-    if (!isExistUserInChat) {
-      return res.status(400).json({
-        message: "U're not a part of this chat.",
-      });
-    }
+    const createMsg = await ChatMsg.createChatMsg({ chat_id, sender_id: user_id, message });
+    if (!createMsg) return res.status(400).json({ ok: false, message: "Unable to send message." });
 
-    const createMsg = await ChatMsg.createChatMsg({
-      chat_id,
-      sender_id,
-      message,
-      sent_at: sent_at || new Date(),
-    });
+    await Chat.updateChat({ chat_id, last_message: message }).catch(() => null);
 
-    if (!createMsg) {
-      return res.status(400).json({
-        message: "Failed to send message.",
-      });
-    }
+    return res.status(200).json({ ok: true, message: "Message sent." });
 
-    const updateChat = await Chat.updateChat({
-      chat_id,
-      last_message: message,
-      last_updated_at: sent_at || new Date(),
-    });
-
-    if (!updateChat) {
-      return res.status(400).json({
-        message: "Failed to update chat message.",
-      });
-    }
-
-    return res.status(200).json({
-      message: "Message sent.",
-      res: createMsg,
-    });
   } catch (err) {
-    console.error("Creating chat message error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Create chat message error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
-
-// Get single chat for project
-
-export const getChatForProject = async (req, res) => {
-  try {
-    const { project_id, user_id } = req.query;
-
-    if (!project_id || !user_id) {
-      return res.status(400).json({
-        message: "Invalid or missing ids.",
-      });
-    }
-
-    const isExistProject = await Project.searchProjectId({ project_id });
-
-    const isExistMemberForChat = await ChatMembers.getMember({user_id, project_id});
-
-    if (!isExistMemberForChat) {
-      return res.status(400).json({
-        message: "U're not a part of this project."
-      })
-    }
-
-    if (!isExistProject) {
-      return res.status(400).json({
-        message: "Project does not exist.",
-      });
-    }
-
-    const isExistChat = await Chat.getChatProjectId({ project_id });
-
-    if (!isExistChat) {
-      return res.status(400).json({
-        message: "Chat doesn't exist for this project.",
-      });
-    }
-
-    return res.status(200).json({
-      message: "Successful.",
-      res: isExistChat,
-    });
-  } catch (err) {
-    console.error("Getting chat error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
-  }
-};
-
-// Get all chat messages
 
 export const getAllMsgsForProject = async (req, res) => {
   try {
-    const { chat_id, project_id, user_id } = req.query;
+    const { chat_id } = req.query;
+    const project_id = req.id;
+    const user_id = req.user_id;
 
-    if (!chat_id || !user_id || !project_id) {
-      return res.status(400).json({
-        message: "Invalid or missing ids.",
-      });
-    }
+    const limit = parseInt(req.query.limit) || 20;
+    const page = parseInt(req.query.page) || 1;
+    const offset = (page - 1) * limit;
+
+    const result = inputValidator(["chat_id"], req.query);
+    if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
     const isExistChat = await Chat.getChat({ chat_id });
+    if (!isExistChat) return res.status(400).json({ ok: false, message: "Chat doesn't exist." });
 
-    const isExistMemberForChat = await ChatMembers.getMember({user_id, project_id});
+    const isExistMemberForChat = await Member.searchMember({ user_id, project_id });
+    if (!isExistMemberForChat) return res.status(401).json({ ok: false, message: "Unauthorized." });
 
-    if (!isExistMemberForChat) {
-      return res.status(400).json({
-        message: "U're not a part of this project."
-      })
-    }
+    const bothMatchesProject = project_id === isExistChat.project_id;
+    if (!bothMatchesProject) return res.status(401).json({ ok: false, message: "Unauthorized." });
 
-    if (!isExistChat) {
-      return res.status(400).json({
-        message: "Chat does not exist.",
-      });
-    }
+    const getAllMsgs = await ChatMsg.getMsgs({ chat_id, limit, offset });
+    const totalCount = await ChatMsg.getAllMsgsCount({ chat_id });
 
-    const getMsgs = await ChatMsg.getMsgs({ chat_id });
+    if (getAllMsgs.length === 0) return res.status(200).json({ ok: true, message: "No messages.", msgs: [] });
 
-    if (getMsgs.length === 0) {
-      return res.status(200).json({
-        message: "No message yet.",
-        msg: getMsgs || [],
-      });
-    }
-
-    return res.status(200).json({
-      message: "Successful.",
-      msg: getMsgs,
-    });
+    return res.status(200).json({ ok: true, message: "Messages found.", msgs: getAllMsgs, pagination: { total: totalCount, page, limit, totalPages: Math.ceil(totalCount / limit) } });
   } catch (err) {
-    console.error("Getting chat messages error : ", err.message);
-    return res.status(500).json({
-      message: "Something went wrong.",
-      sysMessage: err.message,
-    });
+    console.error("Get chat messages error:", err.message);
+    return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
