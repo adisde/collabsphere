@@ -23,6 +23,11 @@ export default class Log {
     static async getUserLogs({ user_id, limit = 20, offset = 0 }) {
         const query = "SELECT * FROM user_logs WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3;";
         const { rows } = await pool.query(query, [user_id, limit, offset]);
-        return rows;
+    }
+
+    static async removeAllLogsForProject({ project_id }) {
+        const query = `DELETE FROM project_logs WHERE project_id = $1 RETURNING *;`;
+        const { rows } = await pool.query(query, [project_id]);
+        return rows.length;
     }
 }
