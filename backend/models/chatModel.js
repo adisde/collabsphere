@@ -30,7 +30,7 @@ export default class Chat {
     return rows[0];
   }
 
-  static async deleteChat({ id }) {
+  static async deleteChatForProject({ id }) {
     const query = "DELETE FROM chats WHERE id = $1 RETURNING *;";
     const { rows } = await pool.query(query, [id]);
     return rows[0];
