@@ -79,4 +79,10 @@ export default class Task {
     const { rows } = await pool.query(query, [id]);
     return rows[0];
   }
+
+  static async removeAllTasksForProject({ project_id }) {
+    const query = "DELETE FROM tasks WHERE project_id = $1 RETURNING *;";
+    const { rows } = await pool.query(query, [project_id]);
+    return rows.length;
+  }
 }
