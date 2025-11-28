@@ -30,4 +30,10 @@ export default class Member {
     const { rows } = await pool.query(query, [project_id]);
     return rows;
   }
+
+  static async removeAllMembersForProject({ project_id }) {
+    const query = `DELETE FROM project_members WHERE project_id = $1 RETURNING *;`;
+    const { rows } = await pool.query(query, [project_id]);
+    return rows.length;
+  }
 }
