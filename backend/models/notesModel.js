@@ -41,4 +41,10 @@ export default class Notes {
     const { rows } = await pool.query(query, [id]);
     return rows[0];
   }
+
+  static async removeAllNotesForProject({ project_id }) {
+    const query = "DELETE FROM notes WHERE project_id = $1 RETURNING *;";
+    const { rows } = await pool.query(query, [project_id]);
+    return rows.length;
+  }
 }
