@@ -1,16 +1,18 @@
 import express from "express";
-import { changePassword, createUser, forgotPassword, loginUser, logoutUser, updateUserDetails, verifyEmail } from "../controllers/userController.js";
+import { confirmUserEmail, loginUserSession, logoutUserSession, registerUser, resetUserPassword, sendPasswordResetEmail, updateUsername } from "../controllers/userController.js";
+import { tokenAuthorize } from "../middlewares/tokenAuthorize.js";
+import { userAuthorize } from "../middlewares/userAuthorize.js";
 
 const router = express.Router();
 
-// User Routes
+router.post("/register", registerUser);
+router.post("/login", loginUserSession);
+router.post("/logout", userAuthorize, logoutUserSession);
 
-router.post("/", createUser);
-router.get("/confirm", verifyEmail);
-router.post("/login", loginUser);
-router.post("/forgot", forgotPassword);
-router.post("/logout", logoutUser);
-router.put("/change-password", changePassword);
-router.put("/update", updateUserDetails);
+router.post("/confirm-email", tokenAuthorize, confirmUserEmail);
+router.post("/reset-email", sendPasswordResetEmail);
+router.put("/reset-password", tokenAuthorize, resetUserPassword);
+
+router.put("/update", userAuthorize, updateUsername);
 
 export default router;
