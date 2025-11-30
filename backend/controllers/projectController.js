@@ -114,12 +114,13 @@ export const getSingleProjectForUser = async (req, res) => {
     const result = inputValidator(["id"], { id });
     if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
-    const [project, members, tasks, notes, logs] = await Promise.all([
+    const [project, members, tasks, notes, logs, chat_id] = await Promise.all([
       Project.searchProjectById({ project_id: id }),
       Member.searchMembers({ project_id: id }),
       Task.getTasks({ project_id: id }),
       Notes.getNotes({ project_id: id }),
-      Log.getProjectLogs({ project_id: id })
+      Log.getProjectLogs({ project_id: id }),
+      Chat.getChatForProject({project_id: id})
     ])
 
     return res.status(200).json({
@@ -129,6 +130,7 @@ export const getSingleProjectForUser = async (req, res) => {
       tasks,
       notes,
       logs,
+      chat_id,
       message: "Successful.",
     });
   } catch (err) {
