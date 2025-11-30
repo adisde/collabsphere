@@ -26,7 +26,7 @@ export default class Member {
   }
 
   static async searchMembers({ project_id }) {
-    const query = `SELECT * FROM project_members WHERE project_id = $1 ORDER BY created_at DESC;`;
+    const query = `SELECT * FROM project_members WHERE project_id = $1 ORDER BY added_at DESC;`;
     const { rows } = await pool.query(query, [project_id]);
     return rows;
   }
