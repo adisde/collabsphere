@@ -1,13 +1,14 @@
 import express from "express";
-import { createProjectMember, deleteProjectMember, getAllMembers, updateProjectMember } from "../controllers/memberController.js";
+import { createProjectMember, deleteProjectMember, searchMembers, updateProjectMember } from "../controllers/memberController.js";
+import { userAuthorize } from "../middlewares/userAuthorize.js";
+import { adminAuthorize } from "../middlewares/adminAuthorize.js";
 
 const router = express.Router();
 
-// Member Routes
+router.post("/add/:project_id", userAuthorize, adminAuthorize, createProjectMember);
+router.put("/update/:project_id", userAuthorize, adminAuthorize, updateProjectMember);
+router.delete("/delete/:project_id", userAuthorize, adminAuthorize, deleteProjectMember);
 
-router.post("/", createProjectMember);
-router.get("/get", getAllMembers);
-router.put("/update", updateProjectMember);
-router.delete("/delete", deleteProjectMember);
+router.get("/search/:project_id", userAuthorize, adminAuthorize, searchMembers);
 
 export default router;
