@@ -59,4 +59,36 @@ export default class User {
     const { rows } = await pool.query(query, [user_id]);
     return rows[0] || null;
   }
+
+  static async searchByEmail({ email, limit, offset, project_id }) {
+    const countQuery = `
+    SELECT COUNT(*) AS total
+    FROM users
+    WHERE email ILIKE $1
+    AND id NOT IN (
+      SELECT user_id FROM project_members WHERE project_id = $2
+    );
+  `;
+    const countValues = [`%${email}%`, project_id];
+    const countResult = await pool.query(countQuery, countValues);
+    const total = Number(countResult.rows[0].total);
+
+    const query = `
+    SELECT id, email
+    FROM users
+    WHERE email ILIKE $1
+    AND id NOT IN (
+      SELECT user_id FROM project_members WHERE project_id = $4
+    )
+    ORDER BY email
+    LIMIT $2 OFFSET $3;
+  `;
+    const values = [`%${email}%`, limit, offset, project_id];
+    const dataResult = await pool.query(query, values);
+
+    return {
+      users: dataResult.rows,
+      count: total,
+    };
+  }
 }
