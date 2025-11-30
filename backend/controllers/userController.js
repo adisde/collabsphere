@@ -18,10 +18,10 @@ export const registerUser = async (req, res) => {
     if (!resultPassword.ok) return res.status(400).json({ message: resultPassword.message });
 
     const isExistEmail = await User.searchEmail({ email: email.trim() });
-    if (!isExistEmail) return res.status(400).json({ ok: false, message: "Email already exists" });
+    if (isExistEmail) return res.status(400).json({ ok: false, message: "Email already exists" });
 
     const isExistUsername = await User.searchUsername({ username: username.trim() });
-    if (!isExistUsername) return res.status(400).json({ ok: false, message: "Username already taken." });
+    if (isExistUsername) return res.status(400).json({ ok: false, message: "Username already taken." });
 
     const hashPassword = await bcrypt.hash(password.trim(), 10);
 
@@ -29,7 +29,7 @@ export const registerUser = async (req, res) => {
 
     if (!createUserAccount) return res.status(400).json({ ok: false, message: "Failed to create user account." });
 
-    const token = generateToken(createUserAccount.id, "email");
+    const token = await generateToken(createUserAccount.id, "email");
 
     await sendEmail(email, "email", token);
 
@@ -41,7 +41,7 @@ export const registerUser = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Creating user error:", err.message);
+    console.error("Create user error:", err.message);
     return res.status(500).json({ ok: false, message: "Something went wrong." });
 
   }
@@ -77,14 +77,11 @@ export const loginUserSession = async (req, res) => {
 
     if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
-    const resultPassword = passwordValidator(password.trim());
-    if (!resultPassword.ok) return res.status(400).json({ ok: false, message: resultPassword.message });
-
     const isExistEmail = await User.searchEmail({ email: email.trim() });
     if (!isExistEmail) return res.status(401).json({ ok: false, message: "Email not exist" });
 
     if (!isExistEmail.isverified) {
-      const token = generateToken(isExistEmail.id, "email");
+      const token = await generateToken(isExistEmail.id, "email");
       await sendEmail(email, "email", token);
 
       return res.status(200).json({ ok: true, message: "Verification email sent." });
@@ -94,7 +91,7 @@ export const loginUserSession = async (req, res) => {
 
     if (!userLogin) return res.status(401).json({ ok: false, message: "Something went wrong." });
 
-    const isPasswordMatch = await bcrypt.compare(password, userLogin.password);
+    const isPasswordMatch = await bcrypt.compare(password.trim(), userLogin.password);
 
     if (!isPasswordMatch) return res.status(401).json({ ok: false, message: "Invalid email or password." });
 
@@ -111,7 +108,7 @@ export const loginUserSession = async (req, res) => {
       maxAge: 8 * 60 * 60 * 1000
     });
 
-    await Log.createUserLog({ user_id, log_message: "Login successful." });
+    await Log.createUserLog({ user_id: userLogin.id, log_message: "Login successful." });
 
     return res.status(200).json({ ok: true, message: "Login successful", user: { id: userLogin.id, email: userLogin.email } });
   } catch (err) {
@@ -183,9 +180,9 @@ export const updateUsername = async (req, res) => {
     if (!isExistEmail) return res.status(404).json({ ok: false, message: "Email does not exist." });
 
     const isExistUsername = await User.searchUsername({ username: username.trim() });
-    if (!isExistUsername) return res.status(400).json({ ok: false, message: "Username is taken" });
-
-    if (isExistEmail.username == isExistUsername.username) return res.status(200).json({ ok: true, message: "Your account have this username." });
+    
+    if (isExistEmail.username == username.trim()) return res.status(200).json({ ok: true, message: "Your account have this username." });
+    if (isExistUsername) return res.status(400).json({ ok: false, message: "Username is taken." });
 
     const updateDetails = await User.updateUser({ username, user_id: isExistEmail.id });
     if (!updateDetails) return res.status(400).json({ ok: false, message: "Failed to update username." });
@@ -202,9 +199,9 @@ export const updateUsername = async (req, res) => {
 
 export const logoutUserSession = async (req, res) => {
   try {
-    const { id } = req.query;
+    const user_id = req.user_id;
 
-    if (!id) return res.status(400).json({ ok: false, message: "Invalid user." });
+    if (!user_id) return res.status(400).json({ ok: false, message: "Invalid user." });
 
     res.clearCookie("collabtoken", {
       httpOnly: true,
@@ -212,7 +209,7 @@ export const logoutUserSession = async (req, res) => {
       sameSite: "strict",
     });
 
-    await Log.createUserLog({ user_id: id, log_message: "Logout successful." });
+    await Log.createUserLog({ user_id, log_message: "Logout successful." });
 
     return res.status(200).json({ ok: true, message: "Logout successful." });
   } catch (err) {
