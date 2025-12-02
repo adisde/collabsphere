@@ -4,13 +4,13 @@ import Project from "../models/projectModel.js";
 
 export const projectAuthorize = async (req, res, next) => {
   try {
-    const project_id = req.params.project_id;
-    const user_id = req.user_id;
+    const project_id = parseInt(req.params.project_id);
+    const user_id = parseInt(req.user_id);
 
     const result = inputValidator(["project_id"], { project_id });
     if (!result.ok) return res.status(400).json({ ok: false, message: result.message });
 
-    if (!user_id || user_id.trim() === "") return res.status(401).json({ ok: false, message: "Unauthorized." });
+    if (!user_id) return res.status(401).json({ ok: false, message: "Unauthorized." });
 
     const isExistProject = await Project.searchProjectById({ project_id });
     if (!isExistProject) return res.status(404).json({ ok: false, message: "Project not found." });
