@@ -1,13 +1,14 @@
 import express from "express";
-import { createProjectNote, deleteProjectNote, getProjectNotes, updateProjectNote } from "../controllers/notesController.js";
+import { createProjectNote, deleteExistingProjectNote, getExistingProjectNote, updateExistingProjectNote } from "../controllers/notesController.js";
+import { userAuthorize } from "../middlewares/userAuthorize.js";
+import { projectAuthorize } from "../middlewares/projectAuthorize.js";
 
 const router = express.Router();
 
-// Note Routes
+router.post("/create/:project_id", userAuthorize, projectAuthorize, createProjectNote);
+router.put("/update/:project_id", userAuthorize, projectAuthorize, updateExistingProjectNote);
+router.delete("/delete/:project_id", userAuthorize, projectAuthorize, deleteExistingProjectNote);
 
-router.post("/", createProjectNote);
-router.get("/get", getProjectNotes);
-router.put("/update", updateProjectNote);
-router.delete("/delete", deleteProjectNote);
+router.get("/get-note/:project_id", userAuthorize, projectAuthorize, getExistingProjectNote);
 
 export default router;
