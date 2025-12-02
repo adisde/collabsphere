@@ -18,7 +18,7 @@ export const createProjectNote = async (req, res) => {
 
     await Log.createProjectLog({ user_id, project_id: id, log_message: `${user_id} created note(${createNote.id}) for the project.` });
 
-    return res.status(201).json({ ok: true, message: "Note created." });
+    return res.status(201).json({ ok: true, message: "Note created.", note: createNote });
   } catch (err) {
     console.error("Create note error:", err.message);
     return res.status(500).json({ ok: false, message: "Something went wrong." });
@@ -42,15 +42,16 @@ export const updateExistingProjectNote = async (req, res) => {
     if (!isExistNoteForProject) return res.status(404).json({ ok: false, message: "Note not found." });
 
     if (user_id !== isExistNoteForProject.user_id) return res.status(401).json({ ok: false, message: "Can't update someone's note." });
+    
     if (project_id !== isExistNoteForProject.project_id) return res.status(400).json({ ok: false, message: "Unknown project." });
 
     const updateNote = await Notes.updateNote({ title, content, id });
     if (!updateNote) return res.status(400).json({ ok: false, message: "Unable to update note." });
 
-    return res.status(200).json({ ok: true, message: "Note updated." });
+    return res.status(200).json({ ok: true, message: "Note updated.", note: updateNote });
 
   } catch (err) {
-    console.error("Update note error : ", err.message);
+    console.error("Update note error:", err.message);
     return res.status(500).json({ ok: false, message: "Something went wrong." });
   }
 };
