@@ -85,4 +85,10 @@ export default class Task {
     const { rows } = await pool.query(query, [project_id]);
     return rows.length;
   }
+
+   static async updateStatus({ id, status }) {
+    const query = "UPDATE tasks SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *;";
+    const { rows } = await pool.query(query, [id, status]);
+    return rows[0];
+  }
 }
