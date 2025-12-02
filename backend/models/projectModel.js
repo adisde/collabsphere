@@ -8,7 +8,7 @@ export default class Project {
   }
 
   static async updateProject({ title, description, id }) {
-    const query = `UPDATE projects SET title = $1, description = $2, updated_at = NOW() WHERE id = $4 RETURNING *;`;
+    const query = `UPDATE projects SET title = $1, description = $2, updated_at = NOW() WHERE id = $3 RETURNING *;`;
     const { rows } = await pool.query(query, [title, description, id]);
     return rows[0];
   }
