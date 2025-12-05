@@ -15,7 +15,7 @@ const pool = new Pool({
   database: process.env.PG_DB,
   ssl: false,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000,
   max: 10,
 });
 
