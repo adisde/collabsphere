@@ -1,11 +1,15 @@
-import { Resend } from "resend";
+import Mailjet from "node-mailjet";
 import dotenv from "dotenv";
 import { emailTokenTemplate } from "../templates/emailTokenTemplate.js";
 import { passwordTokenTemplate } from "../templates/passwordTokenTemplate.js";
-dotenv.config();
+dotenv.config({
+  quiet: true,
+});
 
-const resend = new Resend(process.env.RESEND_KEY);
-const sendFrom = "CollabSphere <onboarding@resend.dev>";
+const mailjet = Mailjet.apiConnect(
+  process.env.MAILJET_API_KEY,
+  process.env.MAILJET_SECRET_KEY
+)
 
 export const sendEmail = async (to, template, token) => {
   try {
@@ -14,27 +18,53 @@ export const sendEmail = async (to, template, token) => {
       const subject = "Confirm Your Account | CollabSphere";
       const url = `${process.env.CLIENT_URL}/auth?token=${token}&from=${userFrom}`;
       const html = emailTokenTemplate(url);
-      const sendMail = await resend.emails.send({
-        from: sendFrom,
-        to,
-        subject,
-        html,
-      });
+      const sendMail = await mailjet
+        .post('send', { version: 'v3.1' })
+        .request({
+          Messages: [
+            {
+              From: {
+                Email: process.env.MAILJET_FROM_EMAIL,
+                Name: process.env.MAILJET_FROM_NAME,
+              },
+              To: [
+                {
+                  Email: to,
+                },
+              ],
+              Subject: subject,
+              HTMLPart: html,
+            },
+          ],
+        }); 
       return sendMail;
     } else if (template == "password") {
       const userFrom = "userVerification";
       const url = `${process.env.CLIENT_URL}/auth?token=${token}&from=${userFrom}`;
       const html = passwordTokenTemplate(url);
       const subject = "Your Password Reset Link | CollabSphere";
-      const sendMail = await resend.emails.send({
-        from: sendFrom,
-        to,
-        subject,
-        html,
-      });
+      const sendMail = await mailjet
+        .post('send', { version: 'v3.1' })
+        .request({
+          Messages: [
+            {
+              From: {
+                Email: process.env.MAILJET_FROM_EMAIL,
+                Name: process.env.MAILJET_FROM_NAME,
+              },
+              To: [
+                {
+                  Email: to,
+                },
+              ],
+              Subject: subject,
+              HTMLPart: html,
+            },
+          ],
+        });
       return sendMail;
     } else {
-        throw new Error("Invalid email template.");
+      throw new Error("Invalid email template.");
     }
   } catch (err) {
     throw new Error("Sending email failed.");
