@@ -22,8 +22,8 @@ export const changepassword = async (password: string, token:string) => {
         const res = await req.json();
 
         if (!res.ok) return { ok: false, message: res.message };
-
         return { ok: true, message: res.message };
+        
     } catch (err: any) {
         return { ok: false, message: err.message };
     }
