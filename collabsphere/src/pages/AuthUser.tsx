@@ -44,11 +44,11 @@ export default function AuthUser() {
   return (
     <div className="w-fit mx-auto mt-28 text-center flex flex-col items-center gap-2 p-2">
       {loading && (
-        <div className="w-10 h-10 border-2 rounded-full animate-spin border-t-transparent border-black dark:border-white dark:border-t-transparent" />
+        <div className="w-10 h-10 border-2 rounded-full animate-spin border-t-transparent border-black" />
       )}
 
       <div className="flex flex-col items-center gap-2">
-        {!loading && <CircleAlert className="w-6 h-6" />}
+        {!loading && <CircleAlert size={25} />}
         <p className="text-center">{showMsg}</p>
       </div>
     </div>
